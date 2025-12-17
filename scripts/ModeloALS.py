@@ -3,6 +3,9 @@ from pyspark.ml.recommendation import ALS
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as f
 
+import os
+import shutil
+
 #Crear la sesion en Spark
 spark = SparkSession.builder.appName("PLFinal_ALS").getOrCreate()
 
@@ -16,6 +19,9 @@ anime  = spark.read.option("header", "true").csv("anime.csv")
 
 #PRIMERA PARTE: unir ratings del usuario 666666 al archivo de ratings general
 #preprocesamiento: convertir a entero las columnas que se van a utilizar
+print("PRIMERA PARTE:UNIR RATINGS DEL USUARIO 666666 AL ARCHIVO GENERAL")
+print()
+print("Esquemas: ")
 ratings_com = ratings_com.select(
     f.col("user_id").cast("int"),
     f.col("anime_id").cast("int"),
@@ -54,7 +60,10 @@ ratings_total= ratings_com.unionByName(valoracionesEP)
 num_ep = ratings_total.filter(f.col("user_id") == 666666).count()
 print(f"Valoraciones del usuario EP en el dataset final: {num_ep}")
 
+print()
+print("MODELO: ENTRENAMIENTO")
 #Parte 2: MODELO ALS
+print("Entrenando el modelo...")
 als=ALS(
     userCol="user_id",
     itemCol="anime_id",
@@ -66,11 +75,13 @@ als=ALS(
 )
 modelo = als.fit(ratings_total)
 
+print("Entrenamiento completado.")
+
 #como ALS trabaja con dataframes, hay que crear uno para el usuario 666666:
 usuario = spark.createDataFrame([Row(user_id=666666 )])
 
 #obtener recomendaciones para el usuario
-recomendaciones_ep = modelo.recommendForUserSubset(usuario, 20)
+recomendaciones_ep = modelo.recommendForUserSubset(usuario, 50)
 
 
 recomendaciones_ep = recomendaciones_ep.select(
@@ -95,5 +106,98 @@ anime = anime.select(
 #unir las recomendaciones con los detalles de los animes (nombre, tipo, etc.) usando 'anime_id' como clave de unión (INNER JOIN).
 recs_ep = recomendaciones_ep.join(anime, on="anime_id", how="inner")
 
-print("\n=== RECOMENDACIONES PARA EL USUARIO 666666 === (vista previa)")
-recs_ep.show(truncate=False)
+#print(" RECOMENDACIONES PARA EL USUARIO 666666 (vista previa)")
+#recs_ep.show(truncate=False)
+
+#excluir aquellos animes ya valorados por el usuario de la recomendación:
+valorados_ep = (
+    ratings_total
+    .filter(f.col("user_id") == 666666)
+    .select("anime_id")
+    .distinct()
+)
+
+#animes recomendados que ya estaban valorados
+recs_con_valorados = recs_ep.join(
+    valorados_ep,
+    on="anime_id",
+    how="inner"
+)
+
+#exclusión definitiva de animes ya valorados
+recs_ep = recs_ep.join(
+    valorados_ep,
+    on="anime_id",
+    how="left_anti"
+)
+
+#SEPARAR SERIES Y PELÍCULAS
+#SERIES: su tipo es TV
+recs_tv = (
+    recs_ep
+    .filter(f.col("type") == "TV")
+    .orderBy(f.col("predicted_rating").desc())
+    .limit(5)
+)
+print()
+print("RECOMENDACIONES: ")
+print(" RECOMENDACIONES TV")
+recs_tv.show(truncate=False)
+
+# PELÍCULAS: su tipo es Movie
+recs_movie = (
+    recs_ep
+    .filter(f.col("type") == "Movie")
+    .orderBy(f.col("predicted_rating").desc())
+    .limit(5)
+)
+
+print("RECOMENDACIONES PELÍCULAS")
+recs_movie.show(truncate=False)
+
+
+#GUARDAR RESULTADOS EN CSV
+#columnas que tendrá el csv
+cols_salida = [
+    "anime_id",
+    "name",
+    "english_name",
+    f.round(f.col("predicted_rating"), 2).alias("rating")
+]
+
+print()
+print("GUARDANDO CSV...")
+
+#eliminar carpetas de salida si existen (para evitar errores en ejecuciones repetidas)
+ruta_series = "../salida/recomendaciones_series"
+ruta_peliculas = "../salida/recomendaciones_peliculas"
+
+if os.path.exists(ruta_series):
+    shutil.rmtree(ruta_series)
+
+if os.path.exists(ruta_peliculas):
+    shutil.rmtree(ruta_peliculas)
+
+#series
+recs_tv_csv = (
+    recs_tv
+    .select(*cols_salida)
+)
+
+
+#para guardar todo en un archivo
+recs_tv_csv.coalesce(1).write.option("header", "true").csv(ruta_series)
+
+#peliculas
+recs_movie_csv = (
+    recs_movie
+    .select(*cols_salida)
+)
+
+#para guardar todo en un archivo
+recs_movie_csv.coalesce(1).write.option("header", "true").csv(ruta_peliculas)
+
+print("CSV generados en carpeta 'salida/'")
+
+
+
