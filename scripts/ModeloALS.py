@@ -1,14 +1,20 @@
-from pyspark import Row
-from pyspark.ml.recommendation import ALS
 import time
 import requests
+import csv
+import os
+import shutil
 
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as f
-from rich.console import Console
+from pyspark import Row
+from pyspark.ml.recommendation import ALS
 
-import os
-import shutil
+from rich.console import Console
+from rich.panel import Panel
+from rich.text import Text
+from rich.layout import Layout
+
+
 
 #Crear la sesion en Spark
 spark = SparkSession.builder.appName("PLFinal_ALS").getOrCreate()
@@ -210,7 +216,38 @@ API_URL = "https://api.jikan.moe/v4/anime/"
 API_DELAY = 1.0
 console = Console()
 
-def obtener_datos (anime_id):
+
+def buscar_csv(carpeta):
+    path_carpeta = os.path.join(DIR_SALIDA, carpeta)
+    if not os.path.isdir(path_carpeta):
+        raise FileNotFoundError(f"No existe la carpeta: {path_carpeta}")
+
+    for f in os.listdir(path_carpeta):
+        if f.startswith("part-") and f.endswith(".csv"):
+            return os.path.join(path_carpeta, f)
+    raise FileNotFoundError(f"No se encontró el archivo CSV ")
+
+
+def leer_recomendaciones(path_csv):
+    recs = []
+    try:
+        with open(path_csv, newline="", encoding="utf-8") as f:
+            reader = csv.reader(f)
+            next(reader)  # Saltar encabezado
+            for row in reader:
+                if len(row) >= 4:
+                    recs.append({
+                        "anime_id": row[0],
+                        "name": row[1],
+                        "english_name": row[2],
+                        "predicted_rating": row[3]
+                    })
+    except Exception as e:
+        console.print(f"Error al leer CSV: {e}")
+    return recs
+
+
+def obtener_datos(anime_id):
     url = f"{API_URL}{anime_id}"
     time.sleep(API_DELAY)
     try:
@@ -228,9 +265,78 @@ def obtener_datos (anime_id):
             "episodes": data.get("episodes", "Información no disponible"),
             "status": data.get("status", "Información no disponible"),
             "score": data.get("score", "Información no disponible"),
+            "duration": data.get("duration", "Información no disponible"),
             "image_url": image_url or "Información no disponible",
             "trailer_url": trailer_url or "Información no disponible"
         }
     except Exception as e:
         return {"error": str(e)}
+
+
+# VISUALIZAR CON RICH
+def mostrar_info_por_consola(item, api_data):
+    title = api_data.get("title_english") or item.get("name")
+    synopsis = api_data.get("synopsis", "Sinopsis no disponible").replace("[Written by MAL Rewrite]", "").strip()
+
+    # Construcción de metadatos
+    metadata = Text()
+    metadata.append(Text(f"[ID: {item['anime_id']} | Rating Spark: {item['predicted_rating'][:4]}]\n"))
+    metadata.append(Text("Puntuación: "));
+    metadata.append(Text(f"{api_data.get('score')}\n"))
+    metadata.append(Text("Duración: "));
+    metadata.append(Text(f"{api_data.get('duration')}\n"))
+    metadata.append(Text("Estudios: "));
+    metadata.append(Text(f"{', '.join(api_data.get('studios', []))}\n"))
+    metadata.append(Text("Géneros: "));
+    metadata.append(Text(f"{', '.join(api_data.get('genres', []))}\n"))
+    metadata.append(Text("Póster: ", ));
+    metadata.append(Text(f"{api_data.get('image_url')}\n", ))
+    metadata.append(Text("Tráiler: ", ));
+    metadata.append(Text(f"{api_data.get('trailer_url')}\n", ))
+
+    # Crear Paneles
+    meta_panel = Panel(metadata, title="Información Técnica")
+    synop_panel = Panel(synopsis, title="Sinopsis")
+
+    # Mostrar en pantalla
+    console.rule(f" {title}")
+    layout = Layout()
+    layout.split_column(
+        Layout(meta_panel, size=12),
+        Layout(synop_panel)
+    )
+    console.print(layout)
+    console.print("\n")
+
+
+def ejecutar():
+    try:
+        csv_series = buscar_csv("recomendaciones_series")
+        csv_peliculas = buscar_csv("recomendaciones_peliculas")
+
+        lista_recomendaciones = leer_recomendaciones(csv_series) + leer_recomendaciones(csv_peliculas)
+
+        resultados = []
+
+        console.print(f"Consultando API Jikan...")
+
+        for item in lista_recomendaciones:
+            info = obtener_datos(item["anime_id"])
+            resultados.append((item, info))
+            console.print(f" Consultado ID: {item['anime_id']}")
+
+        console.print("\n")
+
+        for item, info in resultados:
+            if "error" not in info:
+                mostrar_info_por_consola(item, info)
+            else:
+                console.print(f"Error en ID {item['anime_id']}: {info['error']}")
+
+    except FileNotFoundError as e:
+        console.print(f"Error: {e}. Ejecuta primero el script de Spark.")
+
+
+if __name__ == "__main__":
+    ejecutar()
 
