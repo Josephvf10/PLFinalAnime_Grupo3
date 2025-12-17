@@ -34,3 +34,24 @@ with open(f"{SALIDA}peliculas.txt", "w", encoding="utf-8") as f:
     for fila in peliculas:
         f.write(" | ".join(fila) + "\n")
 
+#GENERAR PDF
+styles = getSampleStyleSheet()
+
+def generar_pdf(nombre, titulo, datos):
+    doc = SimpleDocTemplate(nombre)
+    elementos = []
+
+    elementos.append(Paragraph(titulo, styles["Heading2"]))
+    tabla = Table(datos)
+    tabla.setStyle(TableStyle([
+        ("GRID", (0, 0), (-1, -1), 1, colors.black),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+    ]))
+    elementos.append(tabla)
+    doc.build(elementos)
+
+generar_pdf(f"{SALIDA}series.pdf", "Series recomendadas", series)
+generar_pdf(f"{SALIDA}peliculas.pdf", "Películas recomendadas", peliculas)
+
+print("TXT y PDF generados correctamente en la carpeta 'salida/'")
