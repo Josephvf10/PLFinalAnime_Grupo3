@@ -1,0 +1,6 @@
+anime_id | name | english_name | rating
+3786 | Evangelion: 3.0+1.0 Thrice Upon a Time | Evangelion:3.0+1.0 Thrice Upon a Time | 10.03
+39486 | Gintama: The Final | Unknown | 9.71
+33050 | Fate/stay night Movie: Heaven's Feel - III. Spring Song | Fate/stay night:Heaven's Feel - III. Spring Song | 9.26
+31758 | Kizumonogatari III: Reiketsu-hen | Unknown | 9.11
+33049 | Fate/stay night Movie: Heaven's Feel - II. Lost Butterfly | Fate/stay night:Heaven's Feel - II. Lost Butterfly | 8.99

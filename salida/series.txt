@@ -1,0 +1,6 @@
+anime_id | name | english_name | rating
+40028 | Shingeki no Kyojin: The Final Season | Attack on Titan Final Season | 9.38
+35247 | Owarimonogatari 2nd Season | Owarimonogatari Second Season | 9.31
+9253 | Steins;Gate | Steins;Gate | 9.29
+35180 | 3-gatsu no Lion 2nd Season | March Comes In Like A Lion 2nd Season | 9.25
+28977 | Gintama° | Gintama Season 4 | 9.19
